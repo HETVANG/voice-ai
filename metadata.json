@@ -1,0 +1,8 @@
+{
+  "name": "Voice AI: Scam Call Shield",
+  "description": "High-performance telecom fraud monitoring and mid-call scam prevention console supporting Gujarati, Hindi, and English.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
