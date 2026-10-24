@@ -1,6 +1,6 @@
-import { ShieldAssessment } from '../../types/shield';
-import { assessWithGemini } from './gemini';
-import { assessAudioWithSarvam, analyzeTranscriptWithLexicon } from './sarvam';
+import type { ShieldAssessment } from '../../types/shield.ts';
+import { assessWithGemini } from './gemini.ts';
+import { assessAudioWithSarvam, analyzeTranscriptWithLexicon } from './sarvam.ts';
 
 export interface AnalysisInput {
   audioBuffer?: Buffer;
@@ -21,18 +21,24 @@ export async function runScamShieldPipeline(input: AnalysisInput): Promise<Shiel
   let geminiError: string | null = null;
   let sarvamError: string | null = null;
 
-  // Step 1: Try Gemini
+  // Step 1: Try Gemini with an 18-second timeout for audio and text
   try {
-    const assessment = await assessWithGemini(
-      input.audioBuffer,
-      input.mimeType,
-      input.transcriptText,
-      language
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini API timed out after 18s')), 18000)
     );
+    const assessment = await Promise.race([
+      assessWithGemini(
+        input.audioBuffer,
+        input.mimeType,
+        input.transcriptText,
+        language
+      ),
+      timeoutPromise
+    ]);
     return assessment;
   } catch (err) {
     geminiError = err instanceof Error ? err.message : String(err);
-    console.warn('[ScamShield Pipeline] Gemini step failed, attempting Sarvam fallback:', geminiError);
+    console.warn('[ScamShield Pipeline] Gemini step failed, attempting fallback:', geminiError);
   }
 
   // Step 2: Try Sarvam + Local Lexicon

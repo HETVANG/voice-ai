@@ -1,5 +1,7 @@
 export type RiskLevel = 'High' | 'Medium' | 'Low' | 'Unknown';
 
+export const RISK_LEVELS = ['High', 'Medium', 'Low', 'Unknown'] as const;
+
 export type AnalysisSource = 'gemini' | 'sarvam' | 'local_lexicon' | 'unknown';
 
 export interface ShieldAssessment {
@@ -17,3 +19,4 @@ export interface ShieldAssessment {
 }
 
 export type SupportedLanguage = 'gu' | 'hi' | 'en';
+

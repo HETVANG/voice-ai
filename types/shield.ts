@@ -1,1 +1,1 @@
-export * from '../src/types/shield';
+export * from '../src/types/shield.ts';

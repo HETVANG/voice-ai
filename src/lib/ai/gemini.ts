@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { ShieldAssessment, RiskLevel } from '../../types/shield';
+import type { ShieldAssessment, RiskLevel } from '../../types/shield.ts';
 
 /**
  * Gemini AI Telecom Fraud & Scam Assessment Engine
@@ -16,7 +16,14 @@ export async function assessWithGemini(
     throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build'
+      }
+    }
+  });
 
   const systemInstruction = `
 You are Scam Call Shield, an expert telecom fraud analyst specifically trained for Indian fraud vectors (particularly in Gujarat, Ahmedabad, and pan-India).
@@ -64,14 +71,28 @@ Format your response strictly as a JSON object with this exact shape:
     throw new Error('Neither audio nor transcript was provided for Gemini analysis.');
   }
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents,
-    config: {
-      systemInstruction,
-      responseMimeType: 'application/json'
-    }
-  });
+  // Use fast gemini-3.1-flash-lite for immediate response and resilience
+  let response;
+  try {
+    response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite',
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json'
+      }
+    });
+  } catch (liteErr) {
+    console.warn('gemini-3.1-flash-lite fallback to gemini-3.8-flash:', liteErr);
+    response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json'
+      }
+    });
+  }
 
   const responseText = response.text;
   if (!responseText) {

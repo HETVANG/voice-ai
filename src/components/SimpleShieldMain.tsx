@@ -19,6 +19,7 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { speakText, stopSpeaking } from '../lib/speechVoice';
+import { analyzeTranscriptWithLexicon } from '../lib/ai/sarvam';
 
 interface SimpleShieldMainProps {
   onOpenAdvancedConsole?: () => void;
@@ -155,6 +156,24 @@ export const SimpleShieldMain: React.FC<SimpleShieldMainProps> = ({ onOpenAdvanc
     setErrorMessage(null);
   };
 
+  // Safe response parser that never throws on HTML error pages
+  const parseResponseSafely = async (res: Response) => {
+    const rawText = await res.text();
+    let data: any = null;
+    let isJson = false;
+
+    try {
+      if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+        data = JSON.parse(rawText);
+        isJson = true;
+      }
+    } catch {
+      isJson = false;
+    }
+
+    return { isJson, data, rawText };
+  };
+
   // Run scam analysis
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -182,51 +201,80 @@ export const SimpleShieldMain: React.FC<SimpleShieldMainProps> = ({ onOpenAdvanc
           body: formData
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Server responded with status ${res.status}`);
+        const { isJson, data, rawText } = await parseResponseSafely(res);
+
+        if (!res.ok || !isJson) {
+          console.warn('Audio analysis backend response was non-JSON or not OK:', res.status, rawText.slice(0, 100));
+          throw new Error(
+            data?.error || (isJson ? `Server error ${res.status}` : 'Audio analysis service returned an unexpected response. Please try again.')
+          );
         }
 
         setAnalysisStep('Evaluating regional fraud signatures...');
-        const data: ShieldAssessment = await res.json();
-        setAssessment(data);
+        setAssessment(data as ShieldAssessment);
       } else if (sampleTranscript) {
         setAnalysisStep('Analyzing transcript with AI pipeline...');
-        const res = await fetch('/api/analyze-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: sampleTranscript,
-            language: selectedLanguage
-          })
-        });
+        
+        let analysisCompleted = false;
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Server responded with status ${res.status}`);
+        try {
+          const res = await fetch('/api/analyze-text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: sampleTranscript,
+              language: selectedLanguage
+            })
+          });
+
+          const { isJson, data } = await parseResponseSafely(res);
+
+          if (res.ok && isJson && data && data.riskLevel) {
+            setAssessment(data as ShieldAssessment);
+            analysisCompleted = true;
+          }
+        } catch (fetchErr) {
+          console.warn('Direct API call failed, using client-side fallback:', fetchErr);
         }
 
-        const data: ShieldAssessment = await res.json();
-        setAssessment(data);
+        // If backend failed, timed out, or returned HTML, run client-side regional lexicon!
+        if (!analysisCompleted) {
+          setAnalysisStep('Running regional fraud lexicon fallback...');
+          const fallbackData = analyzeTranscriptWithLexicon(sampleTranscript, selectedLanguage);
+          fallbackData.analysisSource = 'local_lexicon';
+          fallbackData.summary = `[Local Regional Lexicon] ${fallbackData.summary}`;
+          setAssessment(fallbackData);
+        }
       } else {
         setErrorMessage('Please upload an audio file, record your voice, or pick a sample scenario first.');
       }
     } catch (err) {
       console.error('Analysis failed:', err);
-      setErrorMessage(err instanceof Error ? err.message : 'Analysis failed. Please check network and try again.');
-      // Never report safe on failure: show Unknown assessment
-      setAssessment({
-        riskLevel: 'Unknown',
-        score: 0,
-        warningSigns: ['Could not complete automated scan.'],
-        evidence: [],
-        recommendedAction: 'Verify caller directly through independent published contact channels. Do not share money or sensitive codes.',
-        language: selectedLanguage === 'gu' ? 'Gujarati' : selectedLanguage === 'hi' ? 'Hindi' : 'Indian English',
-        analysisSource: 'unknown',
-        transcript: sampleTranscript || '(Audio file upload failed to process)',
-        summary: 'Analysis could not be completed due to a connection or provider error.',
-        error: err instanceof Error ? err.message : String(err)
-      });
+      const friendlyMessage = err instanceof Error && !err.message.includes('<!doctype') && !err.message.includes('Unexpected token')
+        ? err.message
+        : 'The analysis service encountered an unexpected error. Please try again or test with a sample scenario.';
+      setErrorMessage(friendlyMessage);
+
+      // If we have a transcript, fallback to local lexicon rather than failing!
+      if (sampleTranscript) {
+        const fallback = analyzeTranscriptWithLexicon(sampleTranscript, selectedLanguage);
+        fallback.analysisSource = 'local_lexicon';
+        setAssessment(fallback);
+      } else {
+        // Never report safe on failure: show Unknown assessment
+        setAssessment({
+          riskLevel: 'Unknown',
+          score: 0,
+          warningSigns: ['Could not complete automated scan.'],
+          evidence: [],
+          recommendedAction: 'Verify caller directly through independent published contact channels. Do not share money or sensitive codes.',
+          language: selectedLanguage === 'gu' ? 'Gujarati' : selectedLanguage === 'hi' ? 'Hindi' : 'Indian English',
+          analysisSource: 'unknown',
+          transcript: sampleTranscript || '(Audio file upload failed to process)',
+          summary: 'Analysis could not be completed due to a connection or provider error.',
+          error: friendlyMessage
+        });
+      }
     } finally {
       setIsAnalyzing(false);
       setAnalysisStep('');

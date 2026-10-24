@@ -1,4 +1,4 @@
-import { ShieldAssessment, RiskLevel } from '../../types/shield';
+import type { ShieldAssessment, RiskLevel } from '../../types/shield.ts';
 
 /**
  * Sarvam AI Speech-to-Text and Regional Fraud Lexicon Engine

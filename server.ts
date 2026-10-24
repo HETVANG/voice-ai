@@ -3,7 +3,7 @@ import path from 'path';
 import multer from 'multer';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { runScamShieldPipeline } from './src/lib/ai/pipeline';
+import { runScamShieldPipeline } from './src/lib/ai/pipeline.ts';
 
 dotenv.config();
 
@@ -113,6 +113,14 @@ app.post('/api/analyze-text', async (req, res) => {
       error: error instanceof Error ? error.message : String(error)
     });
   }
+});
+
+// Explicit JSON 404 for /api/* endpoints so it never falls through to HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    error: `API route '${req.originalUrl}' not found.`,
+    riskLevel: 'Unknown'
+  });
 });
 
 // Mount Vite or serve static files

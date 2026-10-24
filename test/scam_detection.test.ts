@@ -1,5 +1,5 @@
-import { analyzeTranscriptWithLexicon } from '../src/lib/ai/sarvam';
-import { runScamShieldPipeline } from '../src/lib/ai/pipeline';
+import { analyzeTranscriptWithLexicon } from '../src/lib/ai/sarvam.ts';
+import { runScamShieldPipeline } from '../src/lib/ai/pipeline.ts';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
